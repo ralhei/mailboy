@@ -10,6 +10,8 @@ from imapclient import IMAPClient
 
 from . import config
 
+MAX_IMAP_IDLE_SECS = 300
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 handler = logging.StreamHandler(sys.stdout)
@@ -32,24 +34,33 @@ def distribute_message(smtp, msg, recipients):
         msg['To'] = recipient
         try:
             smtp.send_message(msg)
-        except smtplib.SMTPException as exc:
+        except smtplib.SMTPException:
             logger.error('Failed to send message to %s', recipient)
         else:
             logger.debug('Sent mail to %s', recipient)
 
 
-def publish_accepted_messages(imap, smtp):
+def publish_accepted_messages(imap):
     logger.debug('Starting to search for and publish accepted messages.')
     message_uids = imap.search()
     logger.debug('Found %d accepted messages.', len(message_uids))
-    for uid, message_data in imap.fetch(message_uids, 'RFC822').items():
-        msg = email.message_from_bytes(message_data[b'RFC822'])
-        logger.debug('MSG: from: %s, subject: %s', msg['From'], msg['Subject'])
-        cleanup_subject(msg)
-        distribute_message(smtp, msg, config.RECIPIENTS)
-        target_folder = config.PUBLISHED_FOLDER
-        logger.debug('Moving message into "%s" folder.', target_folder)
-        imap.move(uid, target_folder)
+    if not message_uids:
+        return
+
+    context = ssl.create_default_context()
+    logger.debug('Connecting to SMTP account at %s', config.SMTP_HOST)
+    with smtplib.SMTP_SSL(config.SMTP_HOST, config.SMTP_PORT, context=context) as smtp:
+        logger.debug('Login to SMTP with user %s', config.SMTP_USER)
+        smtp.login(config.SMTP_USER, config.SMTP_SECRET)
+
+        for uid, message_data in imap.fetch(message_uids, 'RFC822').items():
+            msg = email.message_from_bytes(message_data[b'RFC822'])
+            logger.debug('MSG: from: %s, subject: %s', msg['From'], msg['Subject'])
+            cleanup_subject(msg)
+            distribute_message(smtp, msg, config.RECIPIENTS)
+            target_folder = config.PUBLISHED_FOLDER
+            logger.debug('Moving message into "%s" folder.', target_folder)
+            imap.move(uid, target_folder)
 
 
 def init_imap_folder_structure(imap):
@@ -61,10 +72,10 @@ def init_imap_folder_structure(imap):
             imap.subscribe_folder(folder)
 
 
-def imap_poll_loop(imap, smtp, max_count=1, interval=10):
+def imap_poll_loop(imap, max_count=1, interval=10):
     counter = 0
     while True:
-        publish_accepted_messages(imap, smtp)
+        publish_accepted_messages(imap)
         counter += 1
         if max_count is None or counter < max_count:
             try:
@@ -75,20 +86,23 @@ def imap_poll_loop(imap, smtp, max_count=1, interval=10):
             break
 
 
-def imap_idle_loop(imap, smtp, interval=10):
+def imap_idle_loop(imap):
+    # Send existing message first before going into IDLE mode:
+    publish_accepted_messages(imap)
     # Start IDLE mode
-    publish_accepted_messages(imap, smtp)
     imap.idle()
     logger.debug('Starting imap idle loop.')
     while True:
         try:
-            responses = imap.idle_check(timeout=interval)
+            responses = imap.idle_check(timeout=MAX_IMAP_IDLE_SECS)
+            # Turn idle mode on and of after each timeout to refresh TCP connection.
+            # Idle must also be turned off before calling publish_accepted_messages()
+            imap.idle_done()
             if responses:
-                imap.idle_done()
-                publish_accepted_messages(imap, smtp)
-                imap.idle()
+                publish_accepted_messages(imap)
             else:
                 logger.debug('Idle cycle found no new messages.')
+            imap.idle()
         except KeyboardInterrupt:
             imap.idle_done()
             break
@@ -102,19 +116,8 @@ def run(mode, poll_interval):
         init_imap_folder_structure(imap)
         imap.select_folder(config.ACCEPTED_FOLDER)
 
-        context = ssl.create_default_context()
-        logger.debug('Connecting to SMTP account at %s', config.SMTP_HOST)
-        with smtplib.SMTP_SSL(config.SMTP_HOST, config.SMTP_PORT, context=context) as smtp:
-            logger.debug('Login to SMTP with user %s', config.SMTP_USER)
-            smtp.login(config.SMTP_USER, config.SMTP_SECRET)
-
-            if mode == 'idle':
-                imap_idle_loop(imap, smtp)
-            else:
-                max_count = 1 if mode == 'single' else None
-                imap_poll_loop(imap, smtp, max_count, poll_interval)
-
-
-if __name__ == '__main__':
-    run()
-
+        if mode == 'idle':
+            imap_idle_loop(imap)
+        else:
+            max_count = 1 if mode == 'single' else None
+            imap_poll_loop(imap, max_count, poll_interval)
