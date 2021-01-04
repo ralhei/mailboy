@@ -12,13 +12,7 @@ from . import config
 
 MAX_IMAP_IDLE_SECS = 300
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s: %(message)s')
-handler.setFormatter(formatter)
-logger.addHandler(handler)
+logger = logging.getLogger('mailboy')
 
 
 def cleanup_subject(msg):

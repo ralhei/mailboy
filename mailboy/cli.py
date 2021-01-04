@@ -1,5 +1,8 @@
 """Console script for mailboy."""
 import sys
+import pathlib
+import logging.config
+
 import click
 
 from mailboy import mailboy
@@ -11,9 +14,14 @@ from mailboy import mailboy
 @click.option('--poll-interval', default=10, help='Sleep interval when running in IMAP poll mode.')
 @click.option('--workdir', default='.', help='Directory containing "conf" and "log" directory')
 @click.option('--logdir', default='./log', help='Path to "log" directory.')
-@click.option('--confdir', default='./conf', help='Path to "conf" directory.')
+@click.option('--confdir', default='./config', help='Path to "conf" directory.')
 def main(mode, poll_interval, workdir, logdir, confdir):
     """Console script for mailboy."""
+    log_conf = pathlib.Path(confdir, 'logging.conf')
+    if not log_conf.exists():
+        sys.stderr.write(f'Cannot find {log_conf}\n')
+        sys.exit(1)
+    logging.config.fileConfig(log_conf)
     mailboy.run(mode, poll_interval)
 
 
