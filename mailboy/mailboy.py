@@ -45,7 +45,7 @@ def publish_accepted_messages(config, imap):
     context = ssl.create_default_context()
     logger.debug('Connecting to SMTP account at %s', config.smtp.SMTP_HOST)
     with smtplib.SMTP_SSL(config.smtp.SMTP_HOST, config.smtp.SMTP_PORT, context=context) as smtp:
-        logger.debug('Login to SMTP with user %s', config.SMTP_USER)
+        logger.debug('Login to SMTP with user %s', config.smtp.SMTP_USER)
         smtp.login(config.smtp.SMTP_USER, config.smtp.SMTP_PWD)
 
         for uid, message_data in imap.fetch(message_uids, 'RFC822').items():
