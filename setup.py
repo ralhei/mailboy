@@ -10,7 +10,7 @@ with open('README.rst') as readme_file:
 with open('HISTORY.rst') as history_file:
     history = history_file.read()
 
-requirements = ['Click>=7.0', 'imapclient']
+requirements = ['Click>=7.0', 'imapclient', 'easyconfig']
 
 setup_requirements = ['pytest-runner', ]
 
@@ -19,7 +19,7 @@ test_requirements = ['pytest>=6', ]
 setup(
     author="Ralph Heinkel",
     author_email='rh@ralph-heinkel.com',
-    python_requires='>=3.5',
+    python_requires='>=3.6',
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
         'Intended Audience :: Developers',

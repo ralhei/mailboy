@@ -1,5 +1,4 @@
 """Main mailboy module."""
-import sys
 import ssl
 import time
 import email
@@ -8,18 +7,18 @@ import logging
 
 from imapclient import IMAPClient
 
-from . import config
-
 MAX_IMAP_IDLE_SECS = 300
 
 logger = logging.getLogger('mailboy')
 
 
-def cleanup_subject(msg):
+def cleanup_subject(config, msg):
     orig_subject = msg['Subject']
     del msg['Subject']
     # For replies remove previous occurence of HB2.0 from subject:
-    msg['Subject'] = config.SUBJECT_PREFIX + ' ' + orig_subject.replace(config.SUBJECT_PREFIX, '')
+    msg['Subject'] = \
+        config.mailinglist.SUBJECT_PREFIX + ' ' + \
+        orig_subject.replace(config.mailinglist.SUBJECT_PREFIX, '')
 
 
 def distribute_message(smtp, msg, recipients):
@@ -34,31 +33,33 @@ def distribute_message(smtp, msg, recipients):
             logger.debug('Sent mail to %s', recipient)
 
 
-def publish_accepted_messages(imap):
+def publish_accepted_messages(config, imap):
     logger.debug('Starting to search for and publish accepted messages.')
     message_uids = imap.search()
     logger.debug('Found %d accepted messages.', len(message_uids))
     if not message_uids:
         return
 
+    recipients = [r.strip() for r in open(config.mailinglist.RECIPIENTS).readlines()]
+
     context = ssl.create_default_context()
-    logger.debug('Connecting to SMTP account at %s', config.SMTP_HOST)
-    with smtplib.SMTP_SSL(config.SMTP_HOST, config.SMTP_PORT, context=context) as smtp:
+    logger.debug('Connecting to SMTP account at %s', config.smtp.SMTP_HOST)
+    with smtplib.SMTP_SSL(config.smtp.SMTP_HOST, config.smtp.SMTP_PORT, context=context) as smtp:
         logger.debug('Login to SMTP with user %s', config.SMTP_USER)
-        smtp.login(config.SMTP_USER, config.SMTP_SECRET)
+        smtp.login(config.smtp.SMTP_USER, config.smtp.SMTP_PWD)
 
         for uid, message_data in imap.fetch(message_uids, 'RFC822').items():
             msg = email.message_from_bytes(message_data[b'RFC822'])
             logger.debug('MSG: from: %s, subject: %s', msg['From'], msg['Subject'])
-            cleanup_subject(msg)
-            distribute_message(smtp, msg, config.RECIPIENTS)
-            target_folder = config.PUBLISHED_FOLDER
+            cleanup_subject(config, msg)
+            distribute_message(smtp, msg, recipients)
+            target_folder = config.folders.PUBLISHED_FOLDER
             logger.debug('Moving message into "%s" folder.', target_folder)
             imap.move(uid, target_folder)
 
 
-def init_imap_folder_structure(imap):
-    for folder in config.ALL_FOLDERS:
+def init_imap_folder_structure(config, imap):
+    for folder in [config.folders.ACCEPTED_FOLDER, config.folders.PUBLISHED_FOLDER]:
         logger.debug('Checking if folder "%s" exists.', folder)
         if not imap.folder_exists(folder):
             logger.info('Creating IMAP folder "%s"', folder)
@@ -66,10 +67,10 @@ def init_imap_folder_structure(imap):
             imap.subscribe_folder(folder)
 
 
-def imap_poll_loop(imap, max_count=1, interval=10):
+def imap_poll_loop(config, imap, max_count=1, interval=10):
     counter = 0
     while True:
-        publish_accepted_messages(imap)
+        publish_accepted_messages(config, imap)
         counter += 1
         if max_count is None or counter < max_count:
             try:
@@ -80,9 +81,9 @@ def imap_poll_loop(imap, max_count=1, interval=10):
             break
 
 
-def imap_idle_loop(imap):
+def imap_idle_loop(config, imap):
     # Send existing message first before going into IDLE mode:
-    publish_accepted_messages(imap)
+    publish_accepted_messages(config, imap)
     # Start IDLE mode
     imap.idle()
     logger.debug('Starting imap idle loop.')
@@ -93,7 +94,7 @@ def imap_idle_loop(imap):
             # Idle must also be turned off before calling publish_accepted_messages()
             imap.idle_done()
             if responses:
-                publish_accepted_messages(imap)
+                publish_accepted_messages(config, imap)
             else:
                 logger.debug('Idle cycle found no new messages.')
             imap.idle()
@@ -102,16 +103,16 @@ def imap_idle_loop(imap):
             break
 
 
-def run(mode, poll_interval):
-    logger.debug('Connecting to IMAP account at %s', config.IMAP_HOST)
-    with IMAPClient(config.IMAP_HOST) as imap:
-        logger.debug('Login to IMAP with user %s', config.IMAP_USER)
-        imap.login(config.IMAP_USER, config.IMAP_SECRET)
-        init_imap_folder_structure(imap)
-        imap.select_folder(config.ACCEPTED_FOLDER)
+def run(config, mode, poll_interval):
+    logger.debug('Connecting to IMAP account at %s', config.imap.IMAP_HOST)
+    with IMAPClient(config.imap.IMAP_HOST) as imap:
+        logger.debug('Login to IMAP with user %s', config.imap.IMAP_USER)
+        imap.login(config.imap.IMAP_USER, config.imap.IMAP_PWD)
+        init_imap_folder_structure(config, imap)
+        imap.select_folder(config.folders.ACCEPTED_FOLDER)
 
         if mode == 'idle':
-            imap_idle_loop(imap)
+            imap_idle_loop(config, imap)
         else:
             max_count = 1 if mode == 'single' else None
-            imap_poll_loop(imap, max_count, poll_interval)
+            imap_poll_loop(config, imap, max_count, poll_interval)
