@@ -33,6 +33,15 @@ def distribute_message(smtp, msg, recipients):
             logger.debug('Sent mail to %s', recipient)
 
 
+def load_recipients(config):
+    recipients = open(config.mailinglist.RECIPIENTS).readlines()
+    # Strip spaces and tabs around email addresses:
+    recipients = [r.strip() for r in recipients]
+    # Remove empty lines and lines beginning with a hash (i.e. comments):
+    recipients = [r for r in recipients if r and not r.startswith('#')]
+    return recipients
+
+
 def publish_accepted_messages(config, imap):
     logger.debug('Starting to search for and publish accepted messages.')
     message_uids = imap.search()
@@ -40,7 +49,7 @@ def publish_accepted_messages(config, imap):
     if not message_uids:
         return
 
-    recipients = [r.strip() for r in open(config.mailinglist.RECIPIENTS).readlines()]
+    recipients = load_recipients(config)
 
     context = ssl.create_default_context()
     logger.debug('Connecting to SMTP account at %s', config.smtp.SMTP_HOST)
