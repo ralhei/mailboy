@@ -19,16 +19,16 @@ from mailboy import mailboy
 def main(mode, poll_interval, workdir, logdir, confdir):
     """Console script for mailboy."""
     log_conf = pathlib.Path(confdir, 'logging.conf')
-    ml_conf = pathlib.Path(confdir, 'mailinglist.conf')
+    mailboy_conf = pathlib.Path(confdir, 'mailboy.conf')
     if not log_conf.exists():
         sys.stderr.write(f'Cannot find {log_conf}\n')
         sys.exit(1)
-    if not ml_conf.exists():
-        sys.stderr.write(f'Cannot find {ml_conf}\n')
+    if not mailboy_conf.exists():
+        sys.stderr.write(f'Cannot find {mailboy_conf}\n')
         sys.exit(1)
     logging.config.fileConfig(log_conf)
     config = easyconfig.EasyConfigParser()
-    config.read(ml_conf)
+    config.read(mailboy_conf)
     mailboy.run(config.ns, mode, poll_interval)
 
 
