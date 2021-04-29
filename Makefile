@@ -83,3 +83,11 @@ dist: clean ## builds source and wheel package
 
 install: clean ## install the package to the active Python's site-packages
 	python setup.py install
+
+# DKIM: https://russell.ballestrini.net/quickstart-to-dkim-sign-email-with-python/
+dkim: ## Generate DKIM certificate to be stored in dns TXT entry
+	openssl genrsa -out dkim.pem 1024
+	openssl rsa -in dkim.pem -out dkim.pub -pubout
+	@echo 'Put the following string into your TXT dns record with hostname "dkim._default" under your domain:'
+	@DKIM=$$(grep -v -- '----' dkim.pub | paste -sd '') ;\
+	echo "v=DKIM1; k=rsa; p=$$DKIM;"
