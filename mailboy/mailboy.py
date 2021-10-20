@@ -59,6 +59,7 @@ def publish_accepted_messages(config, imap):
 
         for uid, message_data in imap.fetch(message_uids, 'RFC822').items():
             msg = email.message_from_bytes(message_data[b'RFC822'])
+            msg['Reply-To'] = config.smtp.MAIL_USER
             logger.debug('MSG: from: %s, subject: %s', msg['From'], msg['Subject'])
             cleanup_subject(config, msg)
             distribute_message(smtp, msg, recipients)
